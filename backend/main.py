@@ -1,8 +1,12 @@
 from fastapi import FastAPI,File,UploadFile
 from ocr import detect_text
+from evaluation import evaluation_answer
+
 
 
 app=FastAPI()
+
+app.state.result=""
 
 @app.get('/')
 async def root():
@@ -22,6 +26,13 @@ async def create_upload(file:UploadFile=File(...)):
 async def convert_text():
    image_path = "myfile.jpg"
    text = detect_text(image_path)
-   return {'text':text}
+   app.state.result=','.join(text)
+   return {'text':app.state.result}
+
+@app.get("/evaluate/")
+async def eval_answer():
+    question="what is deep learning?"
+    score=evaluation_answer(question,app.state.result)
+    return {"result":score}
 
     
