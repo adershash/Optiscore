@@ -1,8 +1,8 @@
 from langchain_groq import ChatGroq
-llm=ChatGroq(api_key='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')
+llm=ChatGroq(api_key='your api key')
 
 import google.generativeai as genai
-genai.configure(api_key="AIzaSyCQOKNIDpV5RP5kFxARppDvZTz6Zyb0E9I")
+genai.configure(api_key="your api key")
 model = genai.GenerativeModel("gemini-1.5-pro")
 
 import bert_score
@@ -53,7 +53,10 @@ def evaluation_answer(question,student_answer):
     return score_10
 
 
-
+def evaluate_without_bert(question,answer,max_mark):
+    prompt=f"evaluate the answer {answer}, based on the question {question} and give mark only out of {max_mark} no explanation"
+    output=model.generate_content(prompt)
+    return output.text
 
 
 
