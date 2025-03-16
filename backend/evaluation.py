@@ -1,8 +1,8 @@
 from langchain_groq import ChatGroq
-llm=ChatGroq(api_key='your api key')
+llm=ChatGroq(api_key='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')
 
 import google.generativeai as genai
-genai.configure(api_key="your api key")
+genai.configure(api_key="AIzaSyCQOKNIDpV5RP5kFxARppDvZTz6Zyb0E9I")
 model = genai.GenerativeModel("gemini-1.5-pro")
 
 import bert_score
