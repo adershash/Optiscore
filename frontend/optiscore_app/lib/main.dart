@@ -1,6 +1,8 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
+import 'package:http/http.dart' as http;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -31,11 +33,14 @@ class CaptureScreen extends StatefulWidget {
 
 class _CaptureScreenState extends State<CaptureScreen> {
   XFile? _imageFile;
-  String successMessage = "";
+  String evaluatedScore = "";
+  TextEditingController questionController = TextEditingController();
+
+  final String fastApiBaseUrl = "http://192.168.55.116:8000"; // Replace with actual IP
 
   // Open Camera Screen
   Future<void> _openCamera() async {
-    final image = await Navigator.push(
+    final XFile? image = await Navigator.push<XFile>(
       context,
       MaterialPageRoute(
         builder: (context) => CameraScreen(camera: widget.cameras.first),
@@ -45,85 +50,181 @@ class _CaptureScreenState extends State<CaptureScreen> {
     if (image != null) {
       setState(() {
         _imageFile = image;
-        successMessage = ""; // Reset message when a new image is captured
+        evaluatedScore = "";
       });
     }
   }
 
-  // Dummy Upload Function
-  Future<void> _uploadImage() async {
-    if (_imageFile == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("No image to upload!")),
+  // Send Question to FastAPI
+  Future<void> _sendQuestion() async {
+    if (questionController.text.isEmpty) return;
+    try {
+      final response = await http.post(
+        Uri.parse("$fastApiBaseUrl/question/"),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({"question": questionController.text}),
       );
-      return;
+      if (response.statusCode == 200) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Question sent successfully!")),
+        );
+      } else {
+        print("Failed to send question: ${response.body}");
+      }
+    } catch (e) {
+      print("Error sending question: $e");
     }
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Image uploaded successfully!")),
-    );
   }
 
-  // Dummy Convert Function
-  void _convertImage() {
-    if (_imageFile != null) {
-      setState(() {
-        successMessage = "Image converted successfully!";
-      });
-    } else {
-      setState(() {
-        successMessage = "No image to convert!";
-      });
+  // Upload Image to FastAPI
+  Future<void> _uploadImage() async {
+    if (_imageFile == null) return;
+    try {
+      var request = http.MultipartRequest("POST", Uri.parse("$fastApiBaseUrl/upload/"));
+      request.files.add(await http.MultipartFile.fromPath("file", _imageFile!.path));
+      var response = await request.send();
+      if (response.statusCode == 200) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Image uploaded successfully!")),
+        );
+      } else {
+        print("Failed to upload image.");
+      }
+    } catch (e) {
+      print("Error uploading image: $e");
+    }
+  }
+
+  // Evaluate Image and Display Score
+  Future<void> _evaluateImage() async {
+    try {
+      final response = await http.get(Uri.parse("$fastApiBaseUrl/testeval"));
+      if (response.statusCode == 200) {
+        setState(() {
+          evaluatedScore = jsonDecode(response.body)["score"];
+        });
+      } else {
+        print("Failed to get evaluation.");
+      }
+    } catch (e) {
+      print("Error getting evaluation: $e");
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("OptiScore")),
-      body: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          _imageFile != null
-              ? Image.file(File(_imageFile!.path), height: 250)
-              : const Icon(Icons.image, size: 100, color: Colors.grey),
-          const SizedBox(height: 20),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              FloatingActionButton(
-                onPressed: _openCamera,
-                child: const Icon(Icons.camera),
-              ),
-              const SizedBox(width: 20),
-              ElevatedButton.icon(
-                onPressed: _uploadImage,
-                icon: const Icon(Icons.upload),
-                label: const Text("Upload Image"),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          ElevatedButton.icon(
-            onPressed: _convertImage,
-            icon: const Icon(Icons.transform),
-            label: const Text("Convert"),
-          ),
-          const SizedBox(height: 20),
-          TextField(
-            readOnly: true,
-            decoration: InputDecoration(
-              hintText: successMessage.isNotEmpty ? successMessage : "Success message here",
-              border: OutlineInputBorder(),
+      resizeToAvoidBottomInset: true,
+      appBar: AppBar(
+        title: const Text(
+          "OptiScore",
+          style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Colors.white),
+        ),
+        centerTitle: true,
+        backgroundColor: Colors.blueAccent,
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Question Input with Send Button
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: questionController,
+                    decoration: InputDecoration(
+                      labelText: "Enter Question",
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                ElevatedButton(
+                  onPressed: _sendQuestion,
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 14),
+                  ),
+                  child: const Text("Send"),
+                ),
+              ],
             ),
-          ),
-          const SizedBox(height: 20),
-        ],
+            const SizedBox(height: 12),
+
+            // Image Preview
+            Container(
+              height: 250,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 5, offset: Offset(0, 3))],
+              ),
+              child: _imageFile != null
+                  ? ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Image.file(File(_imageFile!.path), fit: BoxFit.cover),
+                    )
+                  : const Center(child: Icon(Icons.image, size: 100, color: Colors.grey)),
+            ),
+            const SizedBox(height: 20),
+
+            // Capture Button
+            FloatingActionButton(
+              onPressed: _openCamera,
+              backgroundColor: Colors.blueAccent,
+              child: const Icon(Icons.camera, color: Colors.white),
+            ),
+            const SizedBox(height: 20),
+
+            // Upload & Evaluate Buttons
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                ElevatedButton.icon(
+                  onPressed: _uploadImage,
+                  icon: const Icon(Icons.upload),
+                  label: const Text("Upload"),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.orangeAccent,
+                    padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 14),
+                  ),
+                ),
+                ElevatedButton.icon(
+                  onPressed: _evaluateImage,
+                  icon: const Icon(Icons.check_circle),
+                  label: const Text("Evaluate"),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 14),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+
+            // Evaluated Score Box
+            if (evaluatedScore.isNotEmpty)
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 30),
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.blueAccent, width: 2),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  evaluatedScore,
+                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.blueAccent),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
 }
 
-// Camera Preview Screen
+// Camera Screen (Opens Camera and Captures Image)
 class CameraScreen extends StatefulWidget {
   final CameraDescription camera;
   const CameraScreen({super.key, required this.camera});
@@ -150,43 +251,22 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   Future<void> _captureImage() async {
-    try {
-      await _initializeControllerFuture;
-      final image = await _controller.takePicture();
-      if (!mounted) return;
-      Navigator.pop(context, image);
-    } catch (e) {
-      print("Error capturing image: $e");
-    }
+    await _initializeControllerFuture;
+    final image = await _controller.takePicture();
+    if (!mounted) return;
+    Navigator.pop(context, image);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: AppBar(title: const Text("Capture Image")),
       body: FutureBuilder<void>(
         future: _initializeControllerFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.done) {
-            return Stack(
-              children: [
-                CameraPreview(_controller),
-                Align(
-                  alignment: Alignment.bottomCenter,
-                  child: Padding(
-                    padding: const EdgeInsets.all(20.0),
-                    child: FloatingActionButton(
-                      onPressed: _captureImage,
-                      child: const Icon(Icons.camera),
-                    ),
-                  ),
-                ),
-              ],
-            );
-          } else {
-            return const Center(child: CircularProgressIndicator());
-          }
-        },
+        builder: (context, snapshot) =>
+            snapshot.connectionState == ConnectionState.done ? CameraPreview(_controller) : const Center(child: CircularProgressIndicator()),
       ),
+      floatingActionButton: FloatingActionButton(onPressed: _captureImage, child: const Icon(Icons.camera)),
     );
   }
 }
