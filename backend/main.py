@@ -19,13 +19,23 @@ app.add_middleware(
 
 app.state.result=""
 app.state.question=""
+app.state.max_score=0
 # Pydantic model to define the expected data structure
 class TextRequest(BaseModel):
     question: str
 
+class MaxScoreRequest(BaseModel):
+    max_score: int
+
+
 @app.get('/')
 async def root():
     return {"name":"adersh","data":101}
+
+@app.post("/max_score/")
+async def receive_max_score(data: MaxScoreRequest):
+    app.state.max_score=data.max_score
+    return {"message": f"Received max score: {data.max_score}"}
 
 @app.post('/question/')
 async def receive_text(request: TextRequest):
@@ -68,6 +78,6 @@ async def eval_without_bert():
     app.state.result.replace("\r","")
     print(app.state.result)
     
-    out=evaluate_without_bert(app.state.question,app.state.result,10)
+    out=evaluate_without_bert(app.state.question,app.state.result,app.state.max_score)
     print(f"output is {out}")
-    return {"score":out}
+    return {"result":out}

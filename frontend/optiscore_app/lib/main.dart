@@ -1,272 +1,251 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:camera/camera.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
 
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  final cameras = await availableCameras();
-  runApp(MyApp(cameras: cameras));
+void main() {
+  runApp(MyApp());
 }
 
 class MyApp extends StatelessWidget {
-  final List<CameraDescription> cameras;
-  const MyApp({super.key, required this.cameras});
-
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      home: CaptureScreen(cameras: cameras),
+      title: 'OptiScore',
+      theme: ThemeData(
+        primarySwatch: Colors.blue,
+        scaffoldBackgroundColor: Colors.grey[200],
+      ),
+      home: ImageCaptureScreen(),
     );
   }
 }
 
-class CaptureScreen extends StatefulWidget {
-  final List<CameraDescription> cameras;
-  const CaptureScreen({super.key, required this.cameras});
-
+class ImageCaptureScreen extends StatefulWidget {
   @override
-  _CaptureScreenState createState() => _CaptureScreenState();
+  _ImageCaptureScreenState createState() => _ImageCaptureScreenState();
 }
 
-class _CaptureScreenState extends State<CaptureScreen> {
-  XFile? _imageFile;
-  String evaluatedScore = "";
-  TextEditingController questionController = TextEditingController();
+class _ImageCaptureScreenState extends State<ImageCaptureScreen> {
+  final TextEditingController _questionController = TextEditingController();
+  final TextEditingController _maxScoreController = TextEditingController();
+  File? _image;
+  String _evaluationResult = "";
+  final ImagePicker _picker = ImagePicker();
 
-  final String fastApiBaseUrl = "http://192.168.55.116:8000"; // Replace with actual IP
-
-  // Open Camera Screen
-  Future<void> _openCamera() async {
-    final XFile? image = await Navigator.push<XFile>(
-      context,
-      MaterialPageRoute(
-        builder: (context) => CameraScreen(camera: widget.cameras.first),
-      ),
-    );
-
-    if (image != null) {
+  Future<void> _pickImage() async {
+    final pickedFile = await _picker.pickImage(source: ImageSource.gallery);
+    if (pickedFile != null) {
       setState(() {
-        _imageFile = image;
-        evaluatedScore = "";
+        _image = File(pickedFile.path);
       });
     }
   }
 
-  // Send Question to FastAPI
+  Future<void> _captureImage() async {
+    final pickedFile = await _picker.pickImage(source: ImageSource.camera);
+    if (pickedFile != null) {
+      setState(() {
+        _image = File(pickedFile.path);
+      });
+    }
+  }
+
   Future<void> _sendQuestion() async {
-    if (questionController.text.isEmpty) return;
+    final String apiUrl = "http://192.168.55.116:8000/question/";
+
+    if (_questionController.text.isEmpty) {
+      _showSnackBar("Please enter a question");
+      return;
+    }
+
     try {
       final response = await http.post(
-        Uri.parse("$fastApiBaseUrl/question/"),
+        Uri.parse(apiUrl),
         headers: {"Content-Type": "application/json"},
-        body: jsonEncode({"question": questionController.text}),
+        body: jsonEncode({"question": _questionController.text}),
       );
+
       if (response.statusCode == 200) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Question sent successfully!")),
-        );
+        _showSnackBar("Question sent successfully!");
       } else {
-        print("Failed to send question: ${response.body}");
+        _showSnackBar("Failed to send question");
       }
     } catch (e) {
-      print("Error sending question: $e");
+      _showSnackBar("Error: $e");
     }
   }
 
-  // Upload Image to FastAPI
-  Future<void> _uploadImage() async {
-    if (_imageFile == null) return;
+  Future<void> _sendMaxScore() async {
+    final String maxScoreUrl = "http://192.168.55.116:8000/max_score/";
+
+    if (_maxScoreController.text.isEmpty) {
+      _showSnackBar("Please enter a max score");
+      return;
+    }
+
     try {
-      var request = http.MultipartRequest("POST", Uri.parse("$fastApiBaseUrl/upload/"));
-      request.files.add(await http.MultipartFile.fromPath("file", _imageFile!.path));
+      final response = await http.post(
+        Uri.parse(maxScoreUrl),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({"max_score": int.parse(_maxScoreController.text)}),
+      );
+
+      if (response.statusCode == 200) {
+        _showSnackBar("Max Score sent successfully!");
+      } else {
+        _showSnackBar("Failed to send max score");
+      }
+    } catch (e) {
+      _showSnackBar("Error: $e");
+    }
+  }
+
+  Future<void> _uploadImage() async {
+    if (_image == null) return;
+
+    final String uploadUrl = "http://192.168.55.116:8000/upload/";
+    var request = http.MultipartRequest("POST", Uri.parse(uploadUrl));
+    request.files.add(await http.MultipartFile.fromPath("file", _image!.path));
+
+    try {
       var response = await request.send();
       if (response.statusCode == 200) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Image uploaded successfully!")),
-        );
+        _showSnackBar("Image uploaded successfully!");
       } else {
-        print("Failed to upload image.");
+        _showSnackBar("Failed to upload image.");
       }
     } catch (e) {
-      print("Error uploading image: $e");
+      _showSnackBar("Error uploading image: $e");
     }
   }
 
-  // Evaluate Image and Display Score
-  Future<void> _evaluateImage() async {
+  Future<void> _evaluate() async {
+    final String evalUrl = "http://192.168.55.116:8000/testeval/";
+
     try {
-      final response = await http.get(Uri.parse("$fastApiBaseUrl/testeval"));
+      final response = await http.get(Uri.parse(evalUrl));
+
       if (response.statusCode == 200) {
         setState(() {
-          evaluatedScore = jsonDecode(response.body)["score"];
+          _evaluationResult = jsonDecode(response.body)["result"];
         });
       } else {
-        print("Failed to get evaluation.");
+        _showSnackBar("Error in evaluation");
       }
     } catch (e) {
-      print("Error getting evaluation: $e");
+      _showSnackBar("Failed to evaluate: $e");
     }
+  }
+
+  void _showSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      resizeToAvoidBottomInset: true,
       appBar: AppBar(
-        title: const Text(
-          "OptiScore",
-          style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Colors.white),
+        title: Text(
+          'OptiScore',
+          style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, letterSpacing: 1.5),
         ),
         centerTitle: true,
         backgroundColor: Colors.blueAccent,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Question Input with Send Button
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: questionController,
-                    decoration: InputDecoration(
-                      labelText: "Enter Question",
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                ElevatedButton(
-                  onPressed: _sendQuestion,
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 14),
-                  ),
-                  child: const Text("Send"),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-
-            // Image Preview
-            Container(
-              height: 250,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 5, offset: Offset(0, 3))],
-              ),
-              child: _imageFile != null
-                  ? ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: Image.file(File(_imageFile!.path), fit: BoxFit.cover),
-                    )
-                  : const Center(child: Icon(Icons.image, size: 100, color: Colors.grey)),
-            ),
-            const SizedBox(height: 20),
-
-            // Capture Button
-            FloatingActionButton(
-              onPressed: _openCamera,
-              backgroundColor: Colors.blueAccent,
-              child: const Icon(Icons.camera, color: Colors.white),
-            ),
-            const SizedBox(height: 20),
-
-            // Upload & Evaluate Buttons
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                ElevatedButton.icon(
-                  onPressed: _uploadImage,
-                  icon: const Icon(Icons.upload),
-                  label: const Text("Upload"),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.orangeAccent,
-                    padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 14),
-                  ),
-                ),
-                ElevatedButton.icon(
-                  onPressed: _evaluateImage,
-                  icon: const Icon(Icons.check_circle),
-                  label: const Text("Evaluate"),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 14),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-
-            // Evaluated Score Box
-            if (evaluatedScore.isNotEmpty)
-              Container(
-                padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 30),
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.blueAccent, width: 2),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  evaluatedScore,
-                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.blueAccent),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-          ],
+      body: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+        child: SingleChildScrollView(
+          child: Column(
+            children: [
+              _buildTextFieldWithButton("Enter Question", _questionController, _sendQuestion),
+              const SizedBox(height: 15),
+              _buildTextFieldWithButton("Enter Max Score", _maxScoreController, _sendMaxScore),
+              const SizedBox(height: 25),
+              _buildImageButtons(),
+              const SizedBox(height: 20),
+              _image != null ? Image.file(_image!, width: 250, height: 250, fit: BoxFit.cover) : _buildPlaceholderImage(),
+              const SizedBox(height: 20),
+              _buildActionButton("Upload Image", Icons.upload, _uploadImage),
+              const SizedBox(height: 20),
+              _buildActionButton("Evaluate", Icons.assessment, _evaluate),
+              const SizedBox(height: 20),
+              _evaluationResult.isNotEmpty ? _buildResultBox(_evaluationResult) : SizedBox.shrink(),
+            ],
+          ),
         ),
       ),
     );
   }
-}
 
-// Camera Screen (Opens Camera and Captures Image)
-class CameraScreen extends StatefulWidget {
-  final CameraDescription camera;
-  const CameraScreen({super.key, required this.camera});
-
-  @override
-  _CameraScreenState createState() => _CameraScreenState();
-}
-
-class _CameraScreenState extends State<CameraScreen> {
-  late CameraController _controller;
-  late Future<void> _initializeControllerFuture;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = CameraController(widget.camera, ResolutionPreset.medium);
-    _initializeControllerFuture = _controller.initialize();
+  Widget _buildTextFieldWithButton(String hint, TextEditingController controller, VoidCallback onPressed) {
+    return Row(
+      children: [
+        Expanded(
+          child: TextField(
+            controller: controller,
+            decoration: InputDecoration(
+              labelText: hint,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              filled: true,
+              fillColor: Colors.white,
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        ElevatedButton(
+          onPressed: onPressed,
+          style: ElevatedButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+          child: Text("Send"),
+        ),
+      ],
+    );
   }
 
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
+  Widget _buildImageButtons() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        _buildActionButton("Capture", Icons.camera_alt, _captureImage),
+        const SizedBox(width: 20),
+        _buildActionButton("Gallery", Icons.image, _pickImage),
+      ],
+    );
   }
 
-  Future<void> _captureImage() async {
-    await _initializeControllerFuture;
-    final image = await _controller.takePicture();
-    if (!mounted) return;
-    Navigator.pop(context, image);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text("Capture Image")),
-      body: FutureBuilder<void>(
-        future: _initializeControllerFuture,
-        builder: (context, snapshot) =>
-            snapshot.connectionState == ConnectionState.done ? CameraPreview(_controller) : const Center(child: CircularProgressIndicator()),
+  Widget _buildActionButton(String label, IconData icon, VoidCallback onPressed) {
+    return ElevatedButton.icon(
+      onPressed: onPressed,
+      icon: Icon(icon, size: 22),
+      label: Text(label, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
+      style: ElevatedButton.styleFrom(
+        padding: EdgeInsets.symmetric(horizontal: 15, vertical: 12),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        elevation: 5,
       ),
-      floatingActionButton: FloatingActionButton(onPressed: _captureImage, child: const Icon(Icons.camera)),
+    );
+  }
+
+  Widget _buildPlaceholderImage() {
+    return Container(
+      width: 250,
+      height: 250,
+      decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10)),
+      child: Center(child: Icon(Icons.image, size: 50, color: Colors.grey[600])),
+    );
+  }
+
+  Widget _buildResultBox(String result) {
+    return Container(
+      padding: EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.green, width: 2),
+        borderRadius: BorderRadius.circular(12),
+        color: Colors.green[50],
+      ),
+      child: Text(result, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.green[800])),
     );
   }
 }
