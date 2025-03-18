@@ -65,13 +65,19 @@ async def convert_text():
 
 @app.get("/evaluate/")
 async def eval_answer():
+    image_path = "images/myfile.jpg"
+    text = detect_text(image_path)
+    app.state.result=','.join(text)
+    app.state.result.replace("\n","")
+    app.state.result.replace("\r","")
     
-    score=evaluation_answer(app.state.question,app.state.result)
-    return {"result":score}
+    score=evaluation_answer(app.state.question,app.state.result,app.state.max_score)
+    score1=str(score)
+    return {"result":score1}
 
 @app.get("/testeval/")
 async def eval_without_bert():
-    image_path = "myfile.jpg"
+    image_path = "images/myfile.jpg"
     text = detect_text(image_path)
     app.state.result=','.join(text)
     app.state.result.replace("\n","")

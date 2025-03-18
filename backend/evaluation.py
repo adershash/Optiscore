@@ -43,13 +43,13 @@ def evaluate_answer_multiple_refs(max_score,candidate, references, model_type="m
 
 
 
-def evaluation_answer(question,student_answer):
+def evaluation_answer(question,student_answer,max_score):
     response1=llm.invoke(input=question)
     print(f"student_answer is {question}")
     
     response2 = model.generate_content(question)
     references=[response1.content,response2.text]
-    score_10 = evaluate_answer_multiple_refs(10,student_answer, references, scoring_method="max")
+    score_10 = evaluate_answer_multiple_refs(max_score,student_answer, references, scoring_method="max")
     return score_10
 
 
