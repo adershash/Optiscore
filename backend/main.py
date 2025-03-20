@@ -1,6 +1,7 @@
 from fastapi import FastAPI,File,UploadFile
 from ocr import detect_text
 from evaluation import evaluation_answer,evaluate_without_bert
+from question_split import extract_questions
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -18,11 +19,13 @@ app.add_middleware(
 )
 
 app.state.result=""
-app.state.question=""
+app.state.counter=0
 app.state.max_score=0
+app.state.questions=[]
+app.state.ques_no=0
 # Pydantic model to define the expected data structure
 class TextRequest(BaseModel):
-    question: str
+    question: int
 
 class MaxScoreRequest(BaseModel):
     max_score: int
@@ -38,10 +41,18 @@ async def receive_max_score(data: MaxScoreRequest):
     return {"message": f"Received max score: {data.max_score}"}
 
 @app.post('/question/')
-async def receive_text(request: TextRequest):
-    app.state.question=request.question
-    print(f"question is {app.state.question}")
-    return {"message": f"Received text: {request.question}"}
+async def question_split(file:UploadFile=File(...)):
+    file.filename=f"myquestion{app.state.counter}.jpg"
+    app.state.counter+=1
+
+    contents=await file.read()
+
+    with open(f"questions/{file.filename}","wb") as f:
+        f.write(contents)
+    questions=extract_questions()
+    app.state.questions.extend(questions)
+    print(f"question is: {app.state.questions[app.state.ques_no]}")
+    return {"filename":file.filename}
     
 
 
@@ -71,7 +82,7 @@ async def eval_answer():
     app.state.result.replace("\n","")
     app.state.result.replace("\r","")
     
-    score=evaluation_answer(app.state.question,app.state.result,app.state.max_score)
+    score=evaluation_answer(app.state.questions[app.state.ques_no-1],app.state.result,app.state.max_score)
     score1=str(score)
     return {"result":score1}
 
@@ -84,6 +95,15 @@ async def eval_without_bert():
     app.state.result.replace("\r","")
     print(app.state.result)
     
-    out=evaluate_without_bert(app.state.question,app.state.result,app.state.max_score)
+    out=evaluate_without_bert(app.state.questions[app.state.ques_no-1],app.state.result,app.state.max_score)
     print(f"output is {out}")
     return {"result":out}
+
+
+@app.post("/question_no/")
+async def question_no(data: TextRequest):
+    if data.question > len(app.state.questions):
+        return{"message": "invalid question number entered"}
+    else:
+        app.state.ques_no=data.question
+        return {"message":"valid number"}
