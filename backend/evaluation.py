@@ -1,5 +1,5 @@
 from langchain_groq import ChatGroq
-llm=ChatGroq(api_key='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')
+llm=ChatGroq(api_key='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',model="mistral-saba-24b")
 
 import google.generativeai as genai
 genai.configure(api_key="AIzaSyCQOKNIDpV5RP5kFxARppDvZTz6Zyb0E9I")
@@ -50,11 +50,11 @@ def evaluation_answer(question,student_answer,max_score):
     response2 = model.generate_content(question)
     references=[response1.content,response2.text]
     score_10 = evaluate_answer_multiple_refs(max_score,student_answer, references, scoring_method="max")
-    return score_10
+    return score_10 
 
 
 def evaluate_without_bert(question,answer,max_mark):
-    prompt=f"evaluate the answer {answer}, based on the question {question} and give mark only out of {max_mark} no explanation"
+    prompt=f"evaluate the answer {answer}, based on the question {question} and give mark only out of {max_mark}.give only mark as score:number format and a small one sentence explanation"
     output=model.generate_content(prompt)
     return output.text
 

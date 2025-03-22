@@ -1,8 +1,8 @@
-import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 void main() {
   runApp(MyApp());
@@ -15,164 +15,215 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'OptiScore',
       theme: ThemeData(
-        primarySwatch: Colors.blue,
-        scaffoldBackgroundColor: Colors.grey[200],
+        primaryColor: Colors.teal,
+        scaffoldBackgroundColor: Colors.grey[100],
       ),
-      home: ImageCaptureScreen(),
+      home: ImageUploadScreen(),
     );
   }
 }
 
-class ImageCaptureScreen extends StatefulWidget {
+class ImageUploadScreen extends StatefulWidget {
   @override
-  _ImageCaptureScreenState createState() => _ImageCaptureScreenState();
+  _ImageUploadScreenState createState() => _ImageUploadScreenState();
 }
 
-class _ImageCaptureScreenState extends State<ImageCaptureScreen> {
-  final TextEditingController _questionController = TextEditingController();
+class _ImageUploadScreenState extends State<ImageUploadScreen> {
+  final String apiUrl = "http://192.168.55.116:8000"; // Replace with your FastAPI server IP
   final TextEditingController _maxScoreController = TextEditingController();
-  File? _image;
-  String _evaluationResult = "";
-  final ImagePicker _picker = ImagePicker();
+  final TextEditingController _questionNumberController = TextEditingController();
+  final TextEditingController _resultController = TextEditingController(); // Result field as text box
 
-  Future<void> _pickImage() async {
+  File? _questionImage;
+  File? _answerImage;
+  final ImagePicker _picker = ImagePicker();
+  
+  bool _clear_flag=false;
+  bool _showResult = false;
+
+  /// **📸 Pick Image from Gallery**
+  Future<void> _pickImage(bool isQuestion) async {
     final pickedFile = await _picker.pickImage(source: ImageSource.gallery);
     if (pickedFile != null) {
       setState(() {
-        _image = File(pickedFile.path);
+        if (isQuestion) {
+          _questionImage = File(pickedFile.path);
+        } else {
+          _answerImage = File(pickedFile.path);
+        }
       });
     }
   }
 
-  Future<void> _captureImage() async {
+  /// **📷 Capture Image from Camera**
+  Future<void> _captureImage(bool isQuestion) async {
     final pickedFile = await _picker.pickImage(source: ImageSource.camera);
     if (pickedFile != null) {
       setState(() {
-        _image = File(pickedFile.path);
+        if (isQuestion) {
+          _questionImage = File(pickedFile.path);
+        } else {
+          _answerImage = File(pickedFile.path);
+        }
       });
     }
   }
 
-  Future<void> _sendQuestion() async {
-    final String apiUrl = "http://192.168.55.116:8000/question/";
-
-    if (_questionController.text.isEmpty) {
-      _showSnackBar("Please enter a question");
+  /// **📤 Upload Image to FastAPI**
+  Future<void> _uploadImage(File? image, String route, String imageType) async {
+    if (image == null) {
+      _showSnackbar("Please select an image to upload.", false);
       return;
     }
 
-    try {
-      final response = await http.post(
-        Uri.parse(apiUrl),
-        headers: {"Content-Type": "application/json"},
-        body: jsonEncode({"question": _questionController.text}),
-      );
+    var request = http.MultipartRequest("POST", Uri.parse("$apiUrl$route"));
+    request.files.add(await http.MultipartFile.fromPath('file', image.path));
 
-      if (response.statusCode == 200) {
-        _showSnackBar("Question sent successfully!");
-      } else {
-        _showSnackBar("Failed to send question");
-      }
-    } catch (e) {
-      _showSnackBar("Error: $e");
+    var response = await request.send();
+    if (response.statusCode == 200) {
+      _showSnackbar("$imageType uploaded successfully!", true);
+    } else {
+      _showSnackbar("Failed to upload $imageType. Try again!", false);
     }
   }
 
-  Future<void> _sendMaxScore() async {
-    final String maxScoreUrl = "http://192.168.55.116:8000/max_score/";
+  /// **📨 Send Question Number**
+  Future<void> _sendQuestionNumber() async {
+    String questionNumber = _questionNumberController.text.trim();
+    if (questionNumber.isEmpty) {
+      _showSnackbar("Enter a question number before sending.", false);
+      return;
+    }
 
-    if (_maxScoreController.text.isEmpty) {
-      _showSnackBar("Please enter a max score");
+    var response = await http.post(
+      Uri.parse("$apiUrl/question_no/"),
+      headers: {"Content-Type": "application/json"},
+      body: jsonEncode({"question": _questionNumberController.text}),
+    );
+
+    if (response.statusCode == 200) {
+      _showSnackbar("Question number sent successfully!", true);
+    } else {
+      _showSnackbar("Failed to send question number!", false);
+    }
+  }
+
+  /// **📨 Send Max Score**
+  Future<void> _sendMaxScore() async {
+    String maxScore = _maxScoreController.text.trim();
+    if (maxScore.isEmpty) {
+      _showSnackbar("Enter a max score before sending.", false);
       return;
     }
 
     try {
-      final response = await http.post(
-        Uri.parse(maxScoreUrl),
+      var response = await http.post(
+        Uri.parse("$apiUrl/max_score/"),
         headers: {"Content-Type": "application/json"},
         body: jsonEncode({"max_score": int.parse(_maxScoreController.text)}),
       );
 
       if (response.statusCode == 200) {
-        _showSnackBar("Max Score sent successfully!");
+        _showSnackbar("Max score sent successfully!", true);
       } else {
-        _showSnackBar("Failed to send max score");
+        _showSnackbar("Failed to send max score!", false);
       }
     } catch (e) {
-      _showSnackBar("Error: $e");
+      _showSnackbar("Invalid max score value!", false);
     }
   }
 
-  Future<void> _uploadImage() async {
-    if (_image == null) return;
-
-    final String uploadUrl = "http://192.168.55.116:8000/upload/";
-    var request = http.MultipartRequest("POST", Uri.parse(uploadUrl));
-    request.files.add(await http.MultipartFile.fromPath("file", _image!.path));
-
-    try {
-      var response = await request.send();
-      if (response.statusCode == 200) {
-        _showSnackBar("Image uploaded successfully!");
-      } else {
-        _showSnackBar("Failed to upload image.");
-      }
-    } catch (e) {
-      _showSnackBar("Error uploading image: $e");
-    }
-  }
-
+  /// **📊 Evaluate and Fetch Result**
   Future<void> _evaluate() async {
-    final String evalUrl = "http://192.168.55.116:8000/testeval/";
+    var response = await http.get(Uri.parse("$apiUrl/testeval/"));
 
-    try {
-      final response = await http.get(Uri.parse(evalUrl));
-
-      if (response.statusCode == 200) {
-        setState(() {
-          _evaluationResult = jsonDecode(response.body)["result"];
-        });
-      } else {
-        _showSnackBar("Error in evaluation");
-      }
-    } catch (e) {
-      _showSnackBar("Failed to evaluate: $e");
+    if (response.statusCode == 200) {
+      setState(() {
+        _showResult = true;
+        _resultController.text = jsonDecode(response.body)["result"];
+      });
+      _showSnackbar("Evaluation successful!", true);
+    } else {
+      _showSnackbar("Failed to fetch evaluation result!", false);
     }
   }
+  ///clear data
+  Future<void> _clear() async {
+    
+    setState(() {
+    _questionNumberController.clear();
+    _maxScoreController.clear();
+    _resultController.clear();
+    _questionImage = null;
+    _answerImage = null;
+    _showResult = false;
+    _clear_flag=true;
+  });
+  var response = await http.post(
+        Uri.parse("$apiUrl/clear/"),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({"clear": _clear_flag}));
+  
 
-  void _showSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  _showSnackbar("All data cleared!", true);
   }
 
+  /// **📢 Show Snackbar**
+  void _showSnackbar(String message, bool success) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message, style: TextStyle(fontSize: 16, color: Colors.white)),
+        backgroundColor: success ? Colors.green : Colors.red,
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+
+  /// **🖼️ UI Elements**
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          'OptiScore',
-          style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, letterSpacing: 1.5),
-        ),
+        title: Text('OptiScore', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white)),
         centerTitle: true,
-        backgroundColor: Colors.blueAccent,
+        backgroundColor: Colors.teal,
       ),
       body: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 25),
         child: SingleChildScrollView(
           child: Column(
             children: [
-              _buildTextFieldWithButton("Enter Question", _questionController, _sendQuestion),
-              const SizedBox(height: 15),
-              _buildTextFieldWithButton("Enter Max Score", _maxScoreController, _sendMaxScore),
+              buildImageSection("Upload Question", _questionImage, true),
+              buildUploadButton("Upload Question", () => _uploadImage(_questionImage, "/question/", "Question")),
+
+              const SizedBox(height: 20),
+
+              buildImageSection("Upload Answer", _answerImage, false),
+              buildUploadButton("Upload Answer", () => _uploadImage(_answerImage, "/upload/", "Answer")),
+
+              const SizedBox(height: 20),
+
+              buildTextFieldWithSendButton("Enter Question Number", _questionNumberController, _sendQuestionNumber),
+              const SizedBox(height: 20),
+              buildTextFieldWithSendButton("Enter Max Score", _maxScoreController, _sendMaxScore),
+
               const SizedBox(height: 25),
-              _buildImageButtons(),
-              const SizedBox(height: 20),
-              _image != null ? Image.file(_image!, width: 250, height: 250, fit: BoxFit.cover) : _buildPlaceholderImage(),
-              const SizedBox(height: 20),
-              _buildActionButton("Upload Image", Icons.upload, _uploadImage),
-              const SizedBox(height: 20),
-              _buildActionButton("Evaluate", Icons.assessment, _evaluate),
-              const SizedBox(height: 20),
-              _evaluationResult.isNotEmpty ? _buildResultBox(_evaluationResult) : SizedBox.shrink(),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  buildEvaluateButton(),
+                  const SizedBox(width: 20),
+                  buildClearButton()
+
+
+                ],
+              ),
+              
+
+              if (_showResult) ...[
+                const SizedBox(height: 25),
+                buildResultTextField(),
+              ],
             ],
           ),
         ),
@@ -180,72 +231,85 @@ class _ImageCaptureScreenState extends State<ImageCaptureScreen> {
     );
   }
 
-  Widget _buildTextFieldWithButton(String hint, TextEditingController controller, VoidCallback onPressed) {
+  Widget buildImageSection(String title, File? image, bool isQuestion) {
+    return Column(
+      children: [
+        Text(title, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.teal[700])),
+        const SizedBox(height: 10),
+        image != null
+            ? Image.file(image, width: 160, height: 160, fit: BoxFit.cover)
+            : Container(width: 160, height: 160, color: Colors.grey[300], child: Icon(Icons.image, size: 50, color: Colors.grey[600])),
+        const SizedBox(height: 15),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            buildUploadButton("Capture", () => _captureImage(isQuestion)),
+            const SizedBox(width: 20),
+            buildUploadButton("Gallery", () => _pickImage(isQuestion)),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget buildUploadButton(String label, VoidCallback onTap) {
+    return ElevatedButton(
+      onPressed: onTap,
+      child: Text(label, style: TextStyle(fontSize: 16, color: Colors.white)),
+      style: ElevatedButton.styleFrom(backgroundColor: Colors.teal),
+    );
+  }
+
+  Widget buildTextFieldWithSendButton(String hint, TextEditingController controller, VoidCallback onTap) {
     return Row(
       children: [
-        Expanded(
-          child: TextField(
-            controller: controller,
-            decoration: InputDecoration(
-              labelText: hint,
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-              filled: true,
-              fillColor: Colors.white,
+        Expanded(child: TextField(controller: controller, decoration: InputDecoration(labelText: hint, border: OutlineInputBorder()))),
+        IconButton(icon: Icon(Icons.send, color: Colors.teal), onPressed: onTap),
+      ],
+    );
+  }
+
+  Widget buildEvaluateButton() {
+    return buildUploadButton("Evaluate", _evaluate);
+  }
+  Widget buildClearButton(){
+    return buildUploadButton("Clear", _clear);
+  }
+
+  Widget buildResultTextField() {
+  return Card(
+    elevation: 4,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    child: Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            "Evaluation Result",
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.teal[700]),
+          ),
+          const SizedBox(height: 8),
+          Container(
+            padding: EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+            decoration: BoxDecoration(
+              color: Colors.teal[50], // Light teal background
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.teal, width: 1.5),
+            ),
+            child: TextField(
+              controller: _resultController,
+              readOnly: true,
+              maxLines: 3,
+              style: TextStyle(fontSize: 18, color: Colors.black87, fontWeight: FontWeight.w500),
+              decoration: InputDecoration(
+                border: InputBorder.none, // Remove default border
+              ),
             ),
           ),
-        ),
-        const SizedBox(width: 10),
-        ElevatedButton(
-          onPressed: onPressed,
-          style: ElevatedButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-          child: Text("Send"),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildImageButtons() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        _buildActionButton("Capture", Icons.camera_alt, _captureImage),
-        const SizedBox(width: 20),
-        _buildActionButton("Gallery", Icons.image, _pickImage),
-      ],
-    );
-  }
-
-  Widget _buildActionButton(String label, IconData icon, VoidCallback onPressed) {
-    return ElevatedButton.icon(
-      onPressed: onPressed,
-      icon: Icon(icon, size: 22),
-      label: Text(label, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
-      style: ElevatedButton.styleFrom(
-        padding: EdgeInsets.symmetric(horizontal: 15, vertical: 12),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        elevation: 5,
+        ],
       ),
-    );
-  }
-
-  Widget _buildPlaceholderImage() {
-    return Container(
-      width: 250,
-      height: 250,
-      decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10)),
-      child: Center(child: Icon(Icons.image, size: 50, color: Colors.grey[600])),
-    );
-  }
-
-  Widget _buildResultBox(String result) {
-    return Container(
-      padding: EdgeInsets.all(15),
-      decoration: BoxDecoration(
-        border: Border.all(color: Colors.green, width: 2),
-        borderRadius: BorderRadius.circular(12),
-        color: Colors.green[50],
-      ),
-      child: Text(result, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.green[800])),
-    );
-  }
+    ),
+  );
+}
 }
