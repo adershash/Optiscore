@@ -1,7 +1,7 @@
 from fastapi import FastAPI,File,UploadFile
 from ocr import detect_text
 from evaluation import evaluation_answer,evaluate_without_bert
-from question_split import split_question
+from question_split import split_question,extract_max_number
 from question_extract import extract_question
 from answerspli import split_answer
 import re
@@ -29,6 +29,7 @@ app.state.answers=""
 app.state.ques_no=""
 app.state.question_list=[]
 app.state.answer_list=[]
+app.state.answer_key=""
 # Pydantic model to define the expected data structure
 class TextRequest(BaseModel):
     question: str
@@ -38,6 +39,9 @@ class MaxScoreRequest(BaseModel):
 
 class ClearRequest(BaseModel):
     clear: bool
+
+class AnswerkeyRequest(BaseModel):
+    answerkey:str
 
 
 @app.get('/')
@@ -134,7 +138,7 @@ async def eval_without_bert():
             sec_ind=1
         elif alpha_part == 'c' :
             sec_ind=2
-        out=evaluate_without_bert(app.state.question_list[first-1][sec_ind],app.state.answer_list[first-1][sec_ind],app.state.max_score)
+        out=evaluate_without_bert(app.state.question_list[first-1][sec_ind],app.state.answer_list[first-1][sec_ind],app.state.max_score,app.state.answer_key)
     print(f"output is {out}")
     return {"result":out}
 
@@ -146,11 +150,14 @@ async def question_no(data: TextRequest):
     qno1=int(qno) 
     print(f"qno1:{qno1}")
 
-    if qno1 > len(app.state.questions):
-        return{"message": "invalid question number entered"}
+    max_qno=extract_max_number(app.state.questions)
+    print(f"max question number: {max_qno}")
+
+    if qno1 > int(max_qno):
+        return{"message": "false"}
     else:
         app.state.ques_no=data.question
-        return {"message":"valid number"}
+        return {"message":"true"}
     
 @app.post("/clear/")
 async def clear_data(data:ClearRequest):
@@ -163,7 +170,16 @@ async def clear_data(data:ClearRequest):
         app.state.ques_no=""
         app.state.question_list.clear()
         app.state.answer_list.clear()
+        app.state.answer_key=""
         print("data: cleared")
         return{"status":"success"}
     else:
         return{"status":"fail"}
+    
+
+@app.post("/answerkey/")
+async def question_no(data: AnswerkeyRequest):
+    
+    app.state.answer_key=data.answerkey
+    print(f"answerkey is :{app.state.answer_key}")
+    return {"status":"success"}

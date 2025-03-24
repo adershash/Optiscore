@@ -32,6 +32,7 @@ class _ImageUploadScreenState extends State<ImageUploadScreen> {
   final String apiUrl = "http://192.168.55.116:8000"; // Replace with your FastAPI server IP
   final TextEditingController _maxScoreController = TextEditingController();
   final TextEditingController _questionNumberController = TextEditingController();
+  final TextEditingController _answerkeyController = TextEditingController();
   final TextEditingController _resultController = TextEditingController(); // Result field as text box
 
   File? _questionImage;
@@ -102,9 +103,34 @@ class _ImageUploadScreenState extends State<ImageUploadScreen> {
     );
 
     if (response.statusCode == 200) {
-      _showSnackbar("Question number sent successfully!", true);
+      var replay=jsonDecode(response.body)["message"];
+      if(replay == "true")
+      _showSnackbar("Valid question number,upload successfully", true);
+      else
+      _showSnackbar("invalid question number entered", false);
     } else {
       _showSnackbar("Failed to send question number!", false);
+    }
+  }
+
+  /// **📨 Send Answer key**
+  Future<void> _sendAnswerkey() async {
+    String answerkey = _answerkeyController.text.trim();
+    if (answerkey.isEmpty) {
+      _showSnackbar("Enter the answerkey before send.", false);
+      return;
+    }
+
+    var response = await http.post(
+      Uri.parse("$apiUrl/answerkey/"),
+      headers: {"Content-Type": "application/json"},
+      body: jsonEncode({"answerkey": _answerkeyController.text}),
+    );
+
+    if (response.statusCode == 200) {
+      _showSnackbar("Answerkey sent successfully!", true);
+    } else {
+      _showSnackbar("Failed to send Answerkey!", false);
     }
   }
 
@@ -152,6 +178,7 @@ class _ImageUploadScreenState extends State<ImageUploadScreen> {
     
     setState(() {
     _questionNumberController.clear();
+    _answerkeyController.clear();
     _maxScoreController.clear();
     _resultController.clear();
     _questionImage = null;
@@ -206,6 +233,8 @@ class _ImageUploadScreenState extends State<ImageUploadScreen> {
               buildTextFieldWithSendButton("Enter Question Number", _questionNumberController, _sendQuestionNumber),
               const SizedBox(height: 20),
               buildTextFieldWithSendButton("Enter Max Score", _maxScoreController, _sendMaxScore),
+              const SizedBox(height: 20),
+              buildTextFieldWithSendButton("Enter evaluation keys", _answerkeyController, _sendAnswerkey),
 
               const SizedBox(height: 25),
               Row(

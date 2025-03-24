@@ -53,8 +53,8 @@ def evaluation_answer(question,student_answer,max_score):
     return score_10 
 
 
-def evaluate_without_bert(question,answer,max_mark):
-    prompt=f"evaluate the answer {answer}, based on the question {question} and give mark only out of {max_mark}.give only mark as score:number format and a small one sentence explanation"
+def evaluate_without_bert(question,answer,max_mark,answerkey):
+    prompt=f"evaluate the answer {answer},  on the question {question} and based on the answerkey {answerkey}give marks only out of {max_mark}.give only mark as score:number format and a small one sentence explanation"
     output=model.generate_content(prompt)
     return output.text
 

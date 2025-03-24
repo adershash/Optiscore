@@ -27,3 +27,15 @@ def split_question(answer_text): # Regex to match question number followed by a 
         else:
             processed_list.append(item)
     return processed_list # Example usage input_text = "1. Answer with number 123. and more text 2. Another answer 3. Answer 3 has a number 456.78. 4. Final answer." result = split_answers(input_text) print(result) 
+
+
+
+def extract_max_number(strings):
+    max_num = float('-inf')  # Initialize with negative infinity
+    for s in strings:
+        numbers = re.findall(r'\d+', s)  # Find all numbers in the string
+        if numbers:
+            max_num = max(max_num, *map(int, numbers))  # Convert to int and find max
+
+    return max_num if max_num != float('-inf') else None  # Return None if no numbers found
+
